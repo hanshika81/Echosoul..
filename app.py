@@ -6,13 +6,12 @@ import os
 from datetime import datetime
 from streamlit_webrtc import webrtc_streamer, WebRtcMode
 from PIL import Image
-import spacy
 from spacy.lang.en import English
 from textblob import TextBlob
 from cryptography.fernet import Fernet
 
 # ---------------------------
-# Load environment variables
+# OpenAI API Key
 # ---------------------------
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -63,14 +62,10 @@ def add_event(event):
     st.session_state.timeline.append({"event": event, "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
 
 # ---------------------------
-# Streamlit Sidebar
+# Sidebar
 # ---------------------------
 st.sidebar.title("EchoSoul")
 mode = st.sidebar.radio("Mode", ["Chat", "Chat history", "Life timeline", "Vault", "Call", "About"])
-
-api_key = st.sidebar.text_input("OpenAI API Key", type="password")
-if api_key:
-    openai.api_key = api_key
 
 # ---------------------------
 # Chat Mode
@@ -129,7 +124,7 @@ elif mode == "Vault":
         st.write(load_from_vault())
 
 # ---------------------------
-# Call Mode (basic WebRTC)
+# Call Mode (WebRTC)
 # ---------------------------
 elif mode == "Call":
     st.title("📞 Live Call with EchoSoul")
