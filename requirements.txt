@@ -1,0 +1,12 @@
+streamlit==1.50.0
+openai==2.1.0
+pandas==2.2.3
+numpy==2.1.2
+cryptography==46.0.2
+streamlit-webrtc==0.63.5
+aiortc==1.13.0
+Pillow==11.0.0
+python-dotenv==1.0.1
+spacy==3.7.2
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
+gTTS==2.5.4

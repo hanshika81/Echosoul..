@@ -1,0 +1,5 @@
+ffmpeg
+libsndfile1
+libportaudio2
+libopus0
+libvpx7
