@@ -1,19 +1,17 @@
-# EchoSoul
+# EchoSoul 🧠💬
 
-EchoSoul is your adaptive AI companion.
+EchoSoul is an AI companion built with Streamlit.  
+It remembers your past, adapts to your personality, and can even talk with you live via WebRTC.
 
-Features:
-- Persistent Memory
-- Adaptive Personality
-- NLP Emotion Detection
-- Life Timeline
-- Encrypted Vault
-- Brain Mimic
-- VoIP Call Prototype (WebRTC)
+## Features
+- Persistent memory & chat history
+- Emotion recognition (sentiment analysis + keyword extraction)
+- Personal life timeline
+- Encrypted private vault
+- Live WebRTC voice/video call
+- Adaptive NLP personality
 
-## 🚀 Deploy on Railway
-1. Push this folder to GitHub.
-2. Create a new project in [Railway](https://railway.app).
-3. Deploy from GitHub repo.
-4. Set env var `OPENAI_API_KEY` in Railway dashboard.
-5. Open the public URL and start chatting with EchoSoul.
+## Run locally
+```bash
+pip install -r requirements.txt
+streamlit run app.py
