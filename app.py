@@ -1,233 +1,146 @@
 import streamlit as st
 import openai
 import pandas as pd
-import json
-import spacy
-from cryptography.fernet import Fernet
-from streamlit_webrtc import webrtc_streamer, WebRtcMode
+import numpy as np
+import os
 from datetime import datetime
+from streamlit_webrtc import webrtc_streamer, WebRtcMode
+from PIL import Image
+import spacy
+from spacy.lang.en import English
+from textblob import TextBlob
+from cryptography.fernet import Fernet
 
-# -----------------------------
-# App Config
-# -----------------------------
-st.set_page_config(page_title="EchoSoul", layout="wide")
-st.title("EchoSoul")
-st.sidebar.title("EchoSoul")
-st.sidebar.markdown("Adaptive personal companion — chat, call, remember.")
+# ---------------------------
+# Load environment variables
+# ---------------------------
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# -----------------------------
-# Load NLP (spaCy)
-# -----------------------------
-@st.cache_resource
-def load_nlp():
-    return spacy.load("en_core_web_sm")
+# ---------------------------
+# Lightweight NLP
+# ---------------------------
+nlp = English()
+nlp.add_pipe("sentencizer")
 
-nlp = load_nlp()
+def analyze_sentiment(text):
+    blob = TextBlob(text)
+    polarity = blob.sentiment.polarity
+    if polarity > 0:
+        return "positive", polarity
+    elif polarity < 0:
+        return "negative", polarity
+    else:
+        return "neutral", polarity
 
-# -----------------------------
-# Session State
-# -----------------------------
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+def extract_keywords(text):
+    doc = nlp(text)
+    keywords = [token.text for token in doc if not token.is_stop and not token.is_punct]
+    return keywords[:5]
+
+# ---------------------------
+# Persistent Vault (encrypted)
+# ---------------------------
+KEY = os.getenv("SECRET_KEY", Fernet.generate_key())
+cipher = Fernet(KEY)
+
+def save_to_vault(data, filename="vault.enc"):
+    with open(filename, "wb") as f:
+        f.write(cipher.encrypt(data.encode()))
+
+def load_from_vault(filename="vault.enc"):
+    if os.path.exists(filename):
+        with open(filename, "rb") as f:
+            return cipher.decrypt(f.read()).decode()
+    return ""
+
+# ---------------------------
+# Life Timeline Storage
+# ---------------------------
 if "timeline" not in st.session_state:
     st.session_state.timeline = []
-if "vault_data" not in st.session_state:
-    st.session_state.vault_data = {}
-if "vault_key" not in st.session_state:
-    st.session_state.vault_key = None
 
-# -----------------------------
-# Sidebar
-# -----------------------------
-mode = st.sidebar.radio("Mode", [
-    "Chat", "Chat history", "Life timeline", "Vault", "Export", "Brain mimic", "Call", "About"
-])
+def add_event(event):
+    st.session_state.timeline.append({"event": event, "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+
+# ---------------------------
+# Streamlit Sidebar
+# ---------------------------
+st.sidebar.title("EchoSoul")
+mode = st.sidebar.radio("Mode", ["Chat", "Chat history", "Life timeline", "Vault", "Call", "About"])
 
 api_key = st.sidebar.text_input("OpenAI API Key", type="password")
 if api_key:
     openai.api_key = api_key
 
-# -----------------------------
-# NLP Emotion
-# -----------------------------
-def analyze_emotion(text):
-    doc = nlp(text)
-    if any(tok.lemma_ in ["happy", "glad", "great", "good", "love"] for tok in doc):
-        return "positive", 1.0
-    elif any(tok.lemma_ in ["sad", "angry", "bad", "hate", "upset"] for tok in doc):
-        return "negative", -1.0
-    return "neutral", 0.0
-
-# -----------------------------
-# Memory Helpers
-# -----------------------------
-def add_to_memory(role, content):
-    st.session_state.messages.append({"role": role, "content": content})
-
-def add_to_timeline(event):
-    st.session_state.timeline.append({
-        "time": str(datetime.now()),
-        "event": event
-    })
-
-# -----------------------------
-# Vault Helpers
-# -----------------------------
-def set_vault_password(password):
-    key = Fernet.generate_key()
-    st.session_state.vault_key = Fernet(key)
-    st.session_state.vault_data["password"] = password
-    st.session_state.vault_data["key"] = key.decode()
-
-def encrypt_data(data):
-    f = Fernet(st.session_state.vault_data["key"].encode())
-    return f.encrypt(data.encode()).decode()
-
-def decrypt_data(token):
-    f = Fernet(st.session_state.vault_data["key"].encode())
-    return f.decrypt(token.encode()).decode()
-
-# -----------------------------
-# Chat
-# -----------------------------
+# ---------------------------
+# Chat Mode
+# ---------------------------
 if mode == "Chat":
-    st.header("💬 Chat with EchoSoul")
+    st.title("💬 Chat with EchoSoul")
 
-    for msg in st.session_state.messages:
-        st.markdown(f"**{msg['role']}:** {msg['content']}")
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
 
-    with st.form("chat_form", clear_on_submit=True):
-        user_input = st.text_area("Message")
-        submitted = st.form_submit_button("Send")
+    user_input = st.text_area("Message", key="chat_input")
+    if st.button("Send"):
+        if user_input.strip():
+            sentiment, score = analyze_sentiment(user_input)
+            keywords = extract_keywords(user_input)
 
-    if submitted and user_input:
-        add_to_memory("user", user_input)
-        emotion, score = analyze_emotion(user_input)
+            reply = f"I heard you. Your mood seems {sentiment} (score={score:.2f}). Keywords: {', '.join(keywords)}"
 
-        if api_key:
-            try:
-                response = openai.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=st.session_state.messages + [
-                        {"role": "system", "content": f"User emotion: {emotion} (score={score})"}
-                    ]
-                )
-                reply = response.choices[0].message.content
-            except Exception as e:
-                reply = f"[OpenAI Error: {e}]"
-        else:
-            reply = f"I heard you. You seem {emotion} (score={score})."
+            st.session_state.chat_history.append(("user", user_input))
+            st.session_state.chat_history.append(("assistant", reply))
 
-        add_to_memory("assistant", reply)
-        add_to_timeline(f"Chat: {user_input}")
+    for role, msg in st.session_state.chat_history:
+        st.markdown(f"**{role}:** {msg}")
 
-# -----------------------------
-# Chat history
-# -----------------------------
+# ---------------------------
+# Chat History
+# ---------------------------
 elif mode == "Chat history":
-    st.header("🗂 Chat History")
-    if st.session_state.messages:
-        st.json(st.session_state.messages)
-    else:
-        st.info("No chat history yet.")
+    st.title("📜 Chat History")
+    if "chat_history" in st.session_state:
+        for role, msg in st.session_state.chat_history:
+            st.markdown(f"**{role}:** {msg}")
 
-# -----------------------------
-# Timeline
-# -----------------------------
+# ---------------------------
+# Life Timeline
+# ---------------------------
 elif mode == "Life timeline":
-    st.header("📜 Life Timeline")
-    if st.session_state.timeline:
-        st.table(pd.DataFrame(st.session_state.timeline))
-    else:
-        st.info("No timeline entries yet.")
+    st.title("📅 Life Timeline")
+    new_event = st.text_input("Add an event")
+    if st.button("Save Event"):
+        if new_event.strip():
+            add_event(new_event)
+    for ev in st.session_state.timeline:
+        st.markdown(f"- {ev['time']}: {ev['event']}")
 
-# -----------------------------
+# ---------------------------
 # Vault
-# -----------------------------
+# ---------------------------
 elif mode == "Vault":
-    st.header("🔐 Memory Vault")
-    if "password" not in st.session_state.vault_data:
-        pwd = st.text_input("Set a password", type="password")
-        if st.button("Set Password") and pwd:
-            set_vault_password(pwd)
-            st.success("Vault is ready!")
-    else:
-        pwd = st.text_input("Enter vault password", type="password")
-        if st.button("Unlock Vault") and pwd == st.session_state.vault_data["password"]:
-            st.success("Vault unlocked!")
-            secret = st.text_area("Sensitive memory")
-            if st.button("Save Memory") and secret:
-                encrypted = encrypt_data(secret)
-                st.session_state.vault_data["secret"] = encrypted
-                st.success("Memory saved securely!")
-            if "secret" in st.session_state.vault_data:
-                st.info("Encrypted memory stored.")
+    st.title("🔒 Personal Vault")
+    secret = st.text_area("Write something private")
+    if st.button("Save to Vault"):
+        save_to_vault(secret)
+        st.success("Saved securely!")
+    if st.button("Load Vault"):
+        st.write(load_from_vault())
 
-# -----------------------------
-# Export
-# -----------------------------
-elif mode == "Export":
-    st.header("📤 Export Data")
-    export_data = {
-        "messages": st.session_state.messages,
-        "timeline": st.session_state.timeline,
-        "vault": st.session_state.vault_data
-    }
-    st.download_button(
-        "Download All Data",
-        data=json.dumps(export_data, indent=2),
-        file_name="echosoul_export.json"
-    )
-
-# -----------------------------
-# Brain Mimic
-# -----------------------------
-elif mode == "Brain mimic":
-    st.header("🧠 Brain Mimic")
-    if api_key:
-        if st.button("Generate Mimic"):
-            sample_text = " ".join([m["content"] for m in st.session_state.messages if m["role"] == "user"][-5:])
-            try:
-                response = openai.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "Mimic the user's tone and personality."},
-                        {"role": "user", "content": sample_text}
-                    ]
-                )
-                mimic_reply = response.choices[0].message.content
-                st.success(f"Mimic: {mimic_reply}")
-            except Exception as e:
-                st.error(f"OpenAI Error: {e}")
-    else:
-        st.warning("Enter an API key to use Brain Mimic.")
-
-# -----------------------------
-# Call
-# -----------------------------
+# ---------------------------
+# Call Mode (basic WebRTC)
+# ---------------------------
 elif mode == "Call":
-    st.header("📞 EchoSoul Call")
-    st.write("Start a secure VoIP-style call with EchoSoul (beta).")
+    st.title("📞 Live Call with EchoSoul")
+    webrtc_streamer(key="call", mode=WebRtcMode.SENDRECV)
 
-    webrtc_streamer(
-        key="call",
-        mode=WebRtcMode.SENDRECV,
-        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-        media_stream_constraints={"audio": True, "video": False}
-    )
-
-# -----------------------------
+# ---------------------------
 # About
-# -----------------------------
+# ---------------------------
 elif mode == "About":
-    st.header("ℹ️ About EchoSoul")
-    st.markdown(\"\"\"
-    EchoSoul is your adaptive AI companion:
-    - Persistent Memory  
-    - Adaptive Personality  
-    - Emotion Recognition (NLP + GPT)  
-    - Life Timeline  
-    - Vault with Encryption  
-    - Brain Mimic  
-    - VoIP Calls (beta)  
-    \"\"\")
+    st.title("ℹ️ About EchoSoul")
+    st.write("""
+    EchoSoul is your AI companion that remembers your past, adapts to your personality, 
+    recognizes emotions, and keeps a life timeline.  
+    """)
